@@ -1,9 +1,0 @@
-F:\dsfr\C2\HaiLiDrvDemo\bin\Debug\HaiLiDrvDemo.exe
-F:\dsfr\C2\HaiLiDrvDemo\bin\Debug\HaiLiDrvDemo.pdb
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.csproj.AssemblyReference.cache
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.Form1.resources
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.Properties.Resources.resources
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.csproj.GenerateResource.cache
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.csproj.CoreCompileInputs.cache
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.exe
-F:\dsfr\C2\HaiLiDrvDemo\obj\Debug\HaiLiDrvDemo.pdb

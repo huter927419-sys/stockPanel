@@ -1,0 +1,65 @@
+# Visual Studio
+.vs/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# Visual Studio cache/options
+.vs/
+*.suo
+*.user
+*.sln.docstates
+*.dtbcache.json
+
+# Build outputs
+*.exe
+*.dll
+*.pdb
+*.cache
+*.manifest
+*.application
+
+# Publish outputs
+app.publish/
+*.publish.xml
+
+# Log files
+*.log
+Logs/
+
+# Claude local settings
+.claude/settings.local.json
+
+# User-specific files
+*.csproj.user
+*.suo
+
+# NuGet
+packages/
+*.nupkg
+
+# Test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~
+
+# Config files with sensitive data (if any)
+# Config/*.json  # 取消注释如果配置文件包含敏感信息
