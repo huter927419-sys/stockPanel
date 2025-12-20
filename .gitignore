@@ -60,6 +60,16 @@ packages/
 *.bak
 *.swp
 *~
+*.original
+
+# Certificate files (should not be committed)
+*.pfx
+*.snk
+
+# Archive files
+*.zip
+*.rar
+*.7z
 
 # Config files with sensitive data (if any)
 # Config/*.json  # 取消注释如果配置文件包含敏感信息
