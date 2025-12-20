@@ -902,9 +902,10 @@ namespace HaiLiDrvDemo
             {
                 Logger.Instance.Info(string.Format("DataReceiver_StockDataReceived: Code={0}, Name={1}, Price={2}, 累计接收={3}", e.StockData.Code, e.StockData.Name, e.StockData.NewPrice, stats.TotalPacketsReceived));
             }
-            else if (stats.TotalStocksProcessed % 100 == 0)
+            // 减少日志频率：每1000条记录一次（避免频繁创建字符串对象）
+            else if (stats.TotalStocksProcessed % 1000 == 0)
             {
-                Logger.Instance.Debug(string.Format("处理实时数据: 股票={0}, 价格={1}, 成交量={2}", e.StockData.Code, e.StockData.NewPrice, e.StockData.Volume));
+                Logger.Instance.Debug(string.Format("处理实时数据: 已处理 {0} 条", stats.TotalStocksProcessed));
             }
             
             // 实时数据中包含代码和名称，先更新基础代码表
@@ -2274,7 +2275,51 @@ namespace HaiLiDrvDemo
                     Logger.Instance.Error(string.Format("异常堆栈: {0}", saveEx.StackTrace));
                 }
                 
-                // 2. 停止所有板块面板的刷新定时器（保存后再清理）
+                // 2. 停止所有定时器（防止内存泄漏）
+                try
+                {
+                    if (refreshTimer != null)
+                    {
+                        refreshTimer.Stop();
+                        refreshTimer.Dispose();
+                        refreshTimer = null;
+                    }
+                    if (layoutRefreshTimer != null)
+                    {
+                        layoutRefreshTimer.Stop();
+                        layoutRefreshTimer.Dispose();
+                        layoutRefreshTimer = null;
+                    }
+                    if (dataReceiveMonitorTimer != null)
+                    {
+                        dataReceiveMonitorTimer.Stop();
+                        dataReceiveMonitorTimer.Dispose();
+                        dataReceiveMonitorTimer = null;
+                    }
+                }
+                catch { }
+                
+                // 3. 取消事件订阅（防止内存泄漏）
+                try
+                {
+                    if (dataReceiver != null)
+                    {
+                        dataReceiver.StockDataReceived -= DataReceiver_StockDataReceived;
+                        dataReceiver.MarketTableReceived -= DataReceiver_MarketTableReceived;
+                    }
+                    if (dataManager != null)
+                    {
+                        dataManager.DataUpdated -= DataManager_DataUpdated;
+                    }
+                    if (dataCollector != null)
+                    {
+                        dataCollector.CollectionStatusChanged -= DataCollector_CollectionStatusChanged;
+                        dataCollector.BasicDataCollected -= DataCollector_BasicDataCollected;
+                    }
+                }
+                catch { }
+                
+                // 4. 停止所有板块面板的刷新定时器（保存后再清理）
                 if (boardPanels != null)
                 {
                     foreach (var panel in boardPanels)
@@ -2291,7 +2336,7 @@ namespace HaiLiDrvDemo
                     boardPanels.Clear();
                 }
                 
-                // 3. 停止数据队列（设置超时，避免长时间等待）
+                // 5. 停止数据队列（设置超时，避免长时间等待）
                 if (dataQueue != null)
                 {
                     try
@@ -2301,7 +2346,7 @@ namespace HaiLiDrvDemo
                     catch { }
                 }
                 
-                // 4. 停止数据接收（重要：在窗体关闭前完成所有消息处理）
+                // 6. 停止数据接收（重要：在窗体关闭前完成所有消息处理）
                 if (isReceivingData && dataCollector != null)
                 {
                     try
@@ -2322,7 +2367,7 @@ namespace HaiLiDrvDemo
                     }
                 }
                 
-                // 5. 清理日志资源（最后执行）
+                // 7. 清理日志资源（最后执行）
                 try
                 {
                     Logger.Instance.Cleanup();

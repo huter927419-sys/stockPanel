@@ -58,15 +58,19 @@ namespace HaiLiDrvDemo
                 {
                     var board = boards[i];
                     sb.AppendLine("  {");
-                    // 使用实际的 EscapeJson 方法调用，而不是字符串字面量
+                    // 使用 StringBuilder 完全替代 string.Format，提高性能
                     string boardName = EscapeJson(board.Name ?? "");
-                    sb.AppendLine(string.Format("    \"Name\": \"{0}\",", boardName));
+                    sb.Append("    \"Name\": \"");
+                    sb.Append(boardName);
+                    sb.AppendLine("\",");
                     sb.AppendLine("    \"StockCodes\": [");
                     
                     for (int j = 0; j < board.StockCodes.Count; j++)
                     {
                         string stockCode = EscapeJson(board.StockCodes[j] ?? "");
-                        sb.Append(string.Format("      \"{0}\"", stockCode));
+                        sb.Append("      \"");
+                        sb.Append(stockCode);
+                        sb.Append("\"");
                         if (j < board.StockCodes.Count - 1)
                             sb.Append(",");
                         sb.AppendLine();
@@ -81,7 +85,11 @@ namespace HaiLiDrvDemo
                     {
                         string key = EscapeJson(kvp.Key ?? "");
                         string value = EscapeJson(kvp.Value ?? "");
-                        sb.Append(string.Format("      \"{0}\": \"{1}\"", key, value));
+                        sb.Append("      \"");
+                        sb.Append(key);
+                        sb.Append("\": \"");
+                        sb.Append(value);
+                        sb.Append("\"");
                         if (nameIndex < board.StockNames.Count - 1)
                             sb.Append(",");
                         sb.AppendLine();
@@ -89,9 +97,12 @@ namespace HaiLiDrvDemo
                     }
                     
                     sb.AppendLine("    },");
-                    // 使用实际的数值，而不是字符串字面量
-                    sb.AppendLine(string.Format("    \"Width\": {0},", board.Width));
-                    sb.AppendLine(string.Format("    \"Height\": {0}", board.Height));
+                    // 使用 StringBuilder 替代 string.Format
+                    sb.Append("    \"Width\": ");
+                    sb.Append(board.Width);
+                    sb.AppendLine(",");
+                    sb.Append("    \"Height\": ");
+                    sb.Append(board.Height);
                     sb.Append("  }");
                     if (i < boards.Count - 1)
                         sb.Append(",");
@@ -99,7 +110,7 @@ namespace HaiLiDrvDemo
                 }
                 
                 sb.AppendLine("]");
-
+                
                 // 确保配置文件路径已初始化
                 string filePath = ConfigFilePath;
                 Logger.Instance.Info(string.Format("准备保存配置文件: {0}", filePath));
@@ -129,7 +140,7 @@ namespace HaiLiDrvDemo
                     Logger.Instance.Info(string.Format("板块配置文件不存在: {0}，返回空列表", filePath));
                     return new List<BoardConfig>();
                 }
-
+                
                 string json = File.ReadAllText(filePath, Encoding.UTF8);
                 Logger.Instance.Info(string.Format("成功读取配置文件: {0}, 长度: {1} 字符", filePath, json.Length));
                 
@@ -153,11 +164,11 @@ namespace HaiLiDrvDemo
                 
                 Logger.Instance.Info(string.Format("板块配置已加载: {0} 个板块", boards.Count));
                 // 详细记录每个板块的股票代码数量
-                for (int i = 0; i < boards.Count; i++)
-                {
-                    var board = boards[i];
-                    if (board != null)
+                    for (int i = 0; i < boards.Count; i++)
                     {
+                        var board = boards[i];
+                        if (board != null)
+                        {
                         int stockCount = board.StockCodes != null ? board.StockCodes.Count : 0;
                         Logger.Instance.Info(string.Format("  板块[{0}]: Name=[{1}], StockCodes数量={2}", i, board.Name ?? "null", stockCount));
                         if (stockCount > 0)
@@ -168,11 +179,11 @@ namespace HaiLiDrvDemo
                         {
                             Logger.Instance.Warning(string.Format("    警告: 板块[{0}]没有股票代码！", board.Name ?? "null"));
                         }
-                    }
-                    else
-                    {
-                        Logger.Instance.Warning(string.Format("  板块[{0}]: null", i));
-                    }
+                        }
+                        else
+                        {
+                            Logger.Instance.Warning(string.Format("  板块[{0}]: null", i));
+                        }
                 }
                 
                 return boards;
@@ -239,11 +250,11 @@ namespace HaiLiDrvDemo
                                 
                                 // 检查是否包含Name字段
                                 if (boardJson.Contains("\"Name\""))
-                                {
+                            {
                                     Logger.Instance.Debug("提取的板块JSON包含\"Name\"字段");
-                                }
-                                else
-                                {
+                            }
+                            else
+                            {
                                     Logger.Instance.Warning("提取的板块JSON不包含\"Name\"字段！");
                                 }
                             }
@@ -485,16 +496,16 @@ namespace HaiLiDrvDemo
                 int codesKeyPos = FindJsonKey(json, "StockCodes");
                 Logger.Instance.Debug(string.Format("FindJsonKey(\"StockCodes\") 返回: {0}", codesKeyPos));
                 if (codesKeyPos >= 0)
-                {
+                    {
                     // 跳过可能的空格，查找左方括号
                     int codesStart = codesKeyPos;
                     while (codesStart < json.Length && char.IsWhiteSpace(json[codesStart]))
-                    {
+                        {
                         codesStart++;
-                    }
-                    
+                        }
+                        
                     if (codesStart < json.Length && json[codesStart] == '[')
-                    {
+                        {
                         codesStart++;  // 跳过左方括号
                         Logger.Instance.Debug(string.Format("板块[{0}]找到StockCodes开始位置: {1}", board.Name ?? "未知", codesStart));
                         
@@ -503,22 +514,22 @@ namespace HaiLiDrvDemo
                         int codesEnd = codesStart;
                         bool foundEnd = false;
                         for (int i = codesStart; i < json.Length && bracketCount > 0; i++)
-                        {
-                            if (json[i] == '[')
-                                bracketCount++;
-                            else if (json[i] == ']')
                             {
-                                bracketCount--;
-                                if (bracketCount == 0)
+                                if (json[i] == '[')
+                                    bracketCount++;
+                                else if (json[i] == ']')
                                 {
-                                    codesEnd = i;
+                                    bracketCount--;
+                                    if (bracketCount == 0)
+                                    {
+                                        codesEnd = i;
                                     foundEnd = true;
                                     Logger.Instance.Debug(string.Format("板块[{0}]找到StockCodes结束位置: {1}", board.Name ?? "未知", codesEnd));
-                                    break;
+                                        break;
+                                    }
                                 }
                             }
-                        }
-                        
+                            
                         if (!foundEnd)
                         {
                             Logger.Instance.Warning(string.Format("板块[{0}]未找到匹配的右方括号，bracketCount={1}", board.Name ?? "未知", bracketCount));
@@ -529,10 +540,10 @@ namespace HaiLiDrvDemo
                             string codesStr = json.Substring(codesStart, codesEnd - codesStart);
                             Logger.Instance.Debug(string.Format("板块[{0}]解析股票代码字符串: [{1}]", board.Name ?? "未知", codesStr));
                             Logger.Instance.Debug(string.Format("板块[{0}]股票代码字符串长度: {1}", board.Name ?? "未知", codesStr.Length));
-                            
+                                
                             // 显示字符串的每个字符（用于调试，限制前100个字符）
                             if (codesStr.Length > 0 && codesStr.Length <= 100)
-                            {
+                                {
                                 StringBuilder charInfo = new StringBuilder();
                                 for (int i = 0; i < codesStr.Length; i++)
                                 {
@@ -562,7 +573,7 @@ namespace HaiLiDrvDemo
                                 int searchIndex = 0;
                                 int quotePairCount = 0;
                                 while (searchIndex < codesStr.Length)
-                                {
+                                    {
                                     // 查找下一个引号
                                     int quoteStart = codesStr.IndexOf('"', searchIndex);
                                     if (quoteStart < 0)
@@ -607,7 +618,7 @@ namespace HaiLiDrvDemo
                                     }
                                     
                                     if (foundEndQuote)
-                                    {
+                                        {
                                         quotePairCount++;
                                         // 提取引号内的内容
                                         string code = codesStr.Substring(quoteStart + 1, quoteEnd - quoteStart - 1);
@@ -618,11 +629,11 @@ namespace HaiLiDrvDemo
                                             // 先Trim，再处理转义字符
                                             string trimmedCode = code.Trim();
                                             string cleanCode = UnescapeJson(trimmedCode);
-                                            
+                                        
                                             Logger.Instance.Debug(string.Format("板块[{0}]清理后代码: [{1}], 长度: {2}", board.Name ?? "未知", cleanCode, cleanCode.Length));
-                                            
-                                            if (!string.IsNullOrEmpty(cleanCode))
-                                            {
+                                        
+                                        if (!string.IsNullOrEmpty(cleanCode))
+                                        {
                                                 board.StockCodes.Add(cleanCode);
                                                 Logger.Instance.Info(string.Format("板块[{0}]成功解析到股票代码: [{1}]", board.Name ?? "未知", cleanCode));
                                             }
@@ -638,9 +649,9 @@ namespace HaiLiDrvDemo
                                         
                                         // 继续查找下一个引号
                                         searchIndex = quoteEnd + 1;
-                                    }
-                                    else
-                                    {
+                                }
+                                else
+                                {
                                         // 未找到匹配的结束引号，退出
                                         Logger.Instance.Warning(string.Format("板块[{0}]未找到匹配的结束引号，开始引号位置: {1}, 字符串长度: {2}", board.Name ?? "未知", quoteStart, codesStr.Length));
                                         break;
@@ -654,19 +665,19 @@ namespace HaiLiDrvDemo
                                 {
                                     Logger.Instance.Info(string.Format("板块[{0}]股票代码列表: {1}", board.Name ?? "未知", string.Join(", ", board.StockCodes.ToArray())));
                                 }
-                            }
-                        }
-                        else
-                        {
-                            if (!foundEnd)
-                            {
-                                Logger.Instance.Warning(string.Format("板块[{0}]未找到匹配的右方括号", board.Name ?? "未知"));
+                                }
                             }
                             else
                             {
-                                Logger.Instance.Warning(string.Format("板块[{0}]StockCodes数组范围无效: codesStart={1}, codesEnd={2}", board.Name ?? "未知", codesStart, codesEnd));
-                            }
+                            if (!foundEnd)
+                            {
+                                Logger.Instance.Warning(string.Format("板块[{0}]未找到匹配的右方括号", board.Name ?? "未知"));
                         }
+                        else
+                        {
+                                Logger.Instance.Warning(string.Format("板块[{0}]StockCodes数组范围无效: codesStart={1}, codesEnd={2}", board.Name ?? "未知", codesStart, codesEnd));
+                        }
+                    }
                     }
                 }
                 else
@@ -681,60 +692,60 @@ namespace HaiLiDrvDemo
                     // 跳过可能的空格，查找左大括号
                     int namesStart = namesKeyPos;
                     while (namesStart < json.Length && char.IsWhiteSpace(json[namesStart]))
-                    {
+                        {
                         namesStart++;
-                    }
-                    
+                        }
+                        
                     if (namesStart < json.Length && json[namesStart] == '{')
-                    {
+                        {
                         namesStart++;  // 跳过左大括号
                         // 查找匹配的右大括号（考虑嵌套结构）
                         int braceCount = 1;
                         int namesEnd = namesStart;
                         bool foundNamesEnd = false;
                         for (int i = namesStart; i < json.Length && braceCount > 0; i++)
-                        {
-                            if (json[i] == '{')
-                                braceCount++;
-                            else if (json[i] == '}')
                             {
-                                braceCount--;
-                                if (braceCount == 0)
+                                if (json[i] == '{')
+                                    braceCount++;
+                                else if (json[i] == '}')
                                 {
+                                    braceCount--;
+                                    if (braceCount == 0)
+                                    {
                                     namesEnd = i;
                                     foundNamesEnd = true;
-                                    break;
-                                }
-                            }
-                        }
-                        
-                        if (foundNamesEnd && namesEnd > namesStart)
-                        {
-                            string namesStr = json.Substring(namesStart, namesEnd - namesStart);
-                            // 解析键值对：\"code\":\"name\"
-                            string[] pairs = namesStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
-                            
-                            foreach (string pair in pairs)
-                            {
-                                int colonIndex = pair.IndexOf(':');
-                                if (colonIndex > 0)
-                                {
-                                    string code = pair.Substring(0, colonIndex).Trim().Trim('"', ' ', '\t', '\r', '\n');
-                                    string name = pair.Substring(colonIndex + 1).Trim().Trim('"', ' ', '\t', '\r', '\n');
-                                    if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(name))
-                                    {
-                                        board.StockNames[UnescapeJson(code)] = UnescapeJson(name);
+                                        break;
                                     }
                                 }
                             }
-                        }
+                            
+                        if (foundNamesEnd && namesEnd > namesStart)
+                            {
+                                string namesStr = json.Substring(namesStart, namesEnd - namesStart);
+                                    // 解析键值对：\"code\":\"name\"
+                                    string[] pairs = namesStr.Split(new char[] { ',' }, StringSplitOptions.RemoveEmptyEntries);
+                                    
+                                    foreach (string pair in pairs)
+                                    {
+                                int colonIndex = pair.IndexOf(':');
+                                if (colonIndex > 0)
+                                        {
+                                    string code = pair.Substring(0, colonIndex).Trim().Trim('"', ' ', '\t', '\r', '\n');
+                                    string name = pair.Substring(colonIndex + 1).Trim().Trim('"', ' ', '\t', '\r', '\n');
+                                            if (!string.IsNullOrEmpty(code) && !string.IsNullOrEmpty(name))
+                                            {
+                                                board.StockNames[UnescapeJson(code)] = UnescapeJson(name);
+                                            }
+                                        }
+                                    }
+                                }
                     }
                 }
                 
                 // 提取宽度（使用灵活的搜索方法）
                 int widthKeyPos = FindJsonKey(json, "Width");
                 if (widthKeyPos >= 0)
-                {
+                                {
                     // 跳过可能的空格
                     int widthStart = widthKeyPos;
                     while (widthStart < json.Length && char.IsWhiteSpace(json[widthStart]))
@@ -746,17 +757,17 @@ namespace HaiLiDrvDemo
                     while (widthEnd < json.Length && json[widthEnd] != ',' && json[widthEnd] != '}')
                     {
                         widthEnd++;
-                    }
+                                }
                     
                     if (widthEnd > widthStart)
-                    {
+                            {
                         string widthStr = json.Substring(widthStart, widthEnd - widthStart).Trim();
                         int width;
                         if (int.TryParse(widthStr, out width))
                         {
                             board.Width = width;
+                            }
                         }
-                    }
                 }
                 
                 // 提取高度（使用灵活的搜索方法）
@@ -783,10 +794,10 @@ namespace HaiLiDrvDemo
                         if (int.TryParse(heightStr, out height))
                         {
                             board.Height = height;
-                        }
+                }
                     }
                 }
-                
+
                 return board;
             }
             catch (Exception ex)
@@ -795,7 +806,7 @@ namespace HaiLiDrvDemo
                 return null;
             }
         }
-        
+
         private string EscapeJson(string str)
         {
             if (string.IsNullOrEmpty(str))

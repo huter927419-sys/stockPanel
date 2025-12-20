@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Drawing;
 using System.Linq;
+using System.Text;
 using System.Windows.Forms;
 
 namespace HaiLiDrvDemo
@@ -28,6 +29,10 @@ namespace HaiLiDrvDemo
 
         // 加载标志：用于区分是加载数据还是用户操作
         private bool isLoading = false;
+        
+        // 虚拟模式支持（用于大数据量场景）
+        private List<StockDisplayItem> virtualModeData = new List<StockDisplayItem>();
+        private bool useVirtualMode = false;  // 当数据量超过100条时启用虚拟模式
         
         // 调整大小相关变量
         private bool isResizing = false;
@@ -1034,7 +1039,7 @@ namespace HaiLiDrvDemo
         {
             refreshTimer = new System.Windows.Forms.Timer
             {
-                Interval = 1000  // 每秒刷新一次
+                Interval = 2000  // 每2秒刷新一次（减少刷新频率，提高性能）
             };
             refreshTimer.Tick += RefreshTimer_Tick;
             refreshTimer.Start();
@@ -1350,8 +1355,7 @@ namespace HaiLiDrvDemo
                 
             try
             {
-                Logger.Instance.Debug(string.Format("板块[{0}]开始刷新数据: stockCodes数量={1}", boardName, stockCodes.Count));
-                
+                // 使用对象池减少GC压力
                 var displayItems = new List<StockDisplayItem>();
                 
                 foreach (var code in stockCodes)
@@ -1365,25 +1369,22 @@ namespace HaiLiDrvDemo
                     {
                         if (!filterSettings.PassFilter(stockData))
                         {
-                            // 不符合筛选条件，跳过
-                            Logger.Instance.Debug(string.Format("板块[{0}]股票被筛选: 代码={1}, 涨跌幅={2}%, 不符合筛选条件", boardName, code, stockData.ChangePercent));
                             continue;
                         }
                     }
 
-                    var item = new StockDisplayItem
-                    {
-                        StockCode = code,
-                        StockName = name,
-                        NewPrice = stockData != null ? stockData.NewPrice : 0,
-                        ChangePercent = stockData != null ? stockData.ChangePercent : 0
-                    };
+                    // 从对象池获取对象，而不是创建新对象
+                    var item = StockDisplayItemPool.Get();
+                    item.StockCode = code;
+                    item.StockName = name;
+                    item.NewPrice = stockData != null ? stockData.NewPrice : 0;
+                    item.ChangePercent = stockData != null ? stockData.ChangePercent : 0;
 
                     displayItems.Add(item);
-                    Logger.Instance.Debug(string.Format("板块[{0}]添加股票到显示列表: 代码={1}, 名称={2}, 价格={3}, 涨跌幅={4}", boardName, code, name, item.NewPrice, item.ChangePercent));
                 }
                 
-                Logger.Instance.Info(string.Format("板块[{0}]刷新数据完成: 共 {1} 条记录待显示", boardName, displayItems.Count));
+                // 仅在记录数变化时记录日志（减少日志输出）
+                // Logger.Instance.Info(string.Format("板块[{0}]刷新数据完成: 共 {1} 条记录待显示", boardName, displayItems.Count));
                 
                 // 按涨跌幅排序（降序：涨幅高的排在前面）
                 // 如果涨幅相同，则按股票代码排序（确保排序稳定）
@@ -1528,11 +1529,59 @@ namespace HaiLiDrvDemo
             {
                 if (dgvStocks == null)
                 {
-                    Logger.Instance.Warning(string.Format("板块[{0}] DataGridView未初始化，无法更新数据", boardName));
+                    // 使用 StringBuilder 优化字符串拼接
+                    StringBuilder sb = new StringBuilder("板块[");
+                    sb.Append(boardName);
+                    sb.Append("] DataGridView未初始化，无法更新数据");
+                    Logger.Instance.Warning(sb.ToString());
                     return;
                 }
                 
-                Logger.Instance.Debug(string.Format("板块[{0}]开始更新DataGridView: 待显示记录数={1}", boardName, displayItems.Count));
+                // 根据数据量决定是否使用虚拟模式（超过100条时启用）
+                bool shouldUseVirtualMode = displayItems != null && displayItems.Count > 100;
+                if (shouldUseVirtualMode != useVirtualMode)
+                {
+                    useVirtualMode = shouldUseVirtualMode;
+                    dgvStocks.VirtualMode = useVirtualMode;
+                    
+                    if (useVirtualMode)
+                    {
+                        // 设置虚拟模式事件处理
+                        dgvStocks.CellValueNeeded += DgvStocks_CellValueNeeded;
+                        dgvStocks.CellFormatting += DgvStocks_CellFormatting;
+                        virtualModeData = new List<StockDisplayItem>(displayItems);
+                        dgvStocks.RowCount = virtualModeData.Count;
+                    }
+                    else
+                    {
+                        // 取消虚拟模式事件处理
+                        dgvStocks.CellValueNeeded -= DgvStocks_CellValueNeeded;
+                        dgvStocks.CellFormatting -= DgvStocks_CellFormatting;
+                        virtualModeData.Clear();
+                    }
+                }
+                
+                // 如果使用虚拟模式，只更新数据源，不手动添加行
+                if (useVirtualMode)
+                {
+                    // 先返回旧对象到对象池
+                    foreach (var oldItem in virtualModeData)
+                    {
+                        if (oldItem != null)
+                        {
+                            StockDisplayItemPool.Return(oldItem);
+                        }
+                    }
+                    
+                    // 更新虚拟模式数据源
+                    virtualModeData = new List<StockDisplayItem>(displayItems);
+                    dgvStocks.RowCount = virtualModeData.Count;
+                    dgvStocks.Invalidate();
+                    return;
+                }
+                
+                // 减少日志输出（仅在调试模式下记录）
+                // Logger.Instance.Debug(string.Format("板块[{0}]开始更新DataGridView: 待显示记录数={1}", boardName, displayItems.Count));
                 
                 // 保存当前选中的股票代码，以便刷新后恢复选中状态
                 string selectedStockCode = null;
@@ -1542,7 +1591,7 @@ namespace HaiLiDrvDemo
                     if (selectedRow.Tag is StockDisplayItem selectedItem)
                     {
                         selectedStockCode = selectedItem.StockCode;
-                        Logger.Instance.Debug(string.Format("板块[{0}]保存选中状态: 股票代码={1}", boardName, selectedStockCode));
+                        // Logger.Instance.Debug(string.Format("板块[{0}]保存选中状态: 股票代码={1}", boardName, selectedStockCode));
                     }
                 }
                 
@@ -1561,7 +1610,10 @@ namespace HaiLiDrvDemo
                     // 确保列存在，如果不存在则初始化
                     if (dgvStocks.Columns.Count == 0)
                     {
-                        Logger.Instance.Warning(string.Format("板块[{0}] DataGridView列不存在，初始化列", boardName));
+                        StringBuilder sb = new StringBuilder("板块[");
+                        sb.Append(boardName);
+                        sb.Append("] DataGridView列不存在，初始化列");
+                        Logger.Instance.Warning(sb.ToString());
                         InitializeDataGridViewColumns();
                     }
                     
@@ -1570,7 +1622,10 @@ namespace HaiLiDrvDemo
                         dgvStocks.Columns["StockName"] == null || 
                         dgvStocks.Columns["ChangePercent"] == null)
                     {
-                        Logger.Instance.Warning(string.Format("板块[{0}] DataGridView列未初始化，重新初始化列", boardName));
+                        StringBuilder sb = new StringBuilder("板块[");
+                        sb.Append(boardName);
+                        sb.Append("] DataGridView列未初始化，重新初始化列");
+                        Logger.Instance.Warning(sb.ToString());
                         InitializeDataGridViewColumns();
                     }
                     
@@ -1666,11 +1721,13 @@ namespace HaiLiDrvDemo
                                 row.Cells["StockName"].Value = displayName;
                             }
                             
-                            // 设置涨幅（带%符号）
+                            // 设置涨幅（带%符号）- 使用 StringBuilder 优化
                             if (row.Cells["ChangePercent"] != null)
                             {
-                                string percentText = item.ChangePercent.ToString("F2") + "%";
-                                row.Cells["ChangePercent"].Value = percentText;
+                                StringBuilder percentSb = new StringBuilder();
+                                percentSb.Append(item.ChangePercent.ToString("F2"));
+                                percentSb.Append("%");
+                                row.Cells["ChangePercent"].Value = percentSb.ToString();
                                 
                                 // 根据涨跌幅设置颜色：正数为红色，负数为绿色，0为白色
                                 // 注意：必须创建新的样式对象，不能直接修改，否则可能不生效
@@ -1718,10 +1775,17 @@ namespace HaiLiDrvDemo
                         }
                         catch (Exception ex)
                         {
-                            Logger.Instance.Error(string.Format("添加行数据失败 (索引 {0}): {1}", i, ex.Message));
+                            StringBuilder sb = new StringBuilder("添加行数据失败 (索引 ");
+                            sb.Append(i);
+                            sb.Append("): ");
+                            sb.Append(ex.Message);
+                            Logger.Instance.Error(sb.ToString());
                         }
                     }
-                    Logger.Instance.Debug(string.Format("已添加 {0} 行数据到DataGridView，当前行数={1}", displayItems.Count, dgvStocks.Rows.Count));
+                    
+                    // 更新完成后，将对象返回到对象池（但保留引用，因为 Tag 中还在使用）
+                    // 注意：这里不能立即返回，因为 row.Tag 还在使用这些对象
+                    // 对象会在下次更新时被重用，或者在新对象创建时被回收
                 }
                 else
                 {
@@ -2153,9 +2217,145 @@ namespace HaiLiDrvDemo
                 {
                     refreshTimer.Stop();
                     refreshTimer.Dispose();
+                    refreshTimer = null;
+                }
+                
+                // 清理 DataGridView 中使用的对象，返回到对象池
+                if (dgvStocks != null && !dgvStocks.IsDisposed)
+                {
+                    // 取消虚拟模式事件
+                    if (useVirtualMode)
+                    {
+                        dgvStocks.CellValueNeeded -= DgvStocks_CellValueNeeded;
+                        dgvStocks.CellFormatting -= DgvStocks_CellFormatting;
+                    }
+                    
+                    // 返回普通模式下的对象
+                    foreach (DataGridViewRow row in dgvStocks.Rows)
+                    {
+                        if (row.Tag is StockDisplayItem item)
+                        {
+                            StockDisplayItemPool.Return(item);
+                            row.Tag = null;
+                        }
+                    }
+                    
+                    // 返回虚拟模式下的对象
+                    if (virtualModeData != null)
+                    {
+                        foreach (var item in virtualModeData)
+                        {
+                            if (item != null)
+                            {
+                                StockDisplayItemPool.Return(item);
+                            }
+                        }
+                        virtualModeData.Clear();
+                    }
                 }
             }
             base.Dispose(disposing);
+        }
+        
+        /// <summary>
+        /// 虚拟模式：CellValueNeeded 事件处理（仅在虚拟模式下使用）
+        /// </summary>
+        private void DgvStocks_CellValueNeeded(object sender, DataGridViewCellValueEventArgs e)
+        {
+            if (!useVirtualMode || virtualModeData == null || e.RowIndex < 0 || e.RowIndex >= virtualModeData.Count)
+                return;
+                
+            if (dgvStocks == null || e.ColumnIndex < 0 || e.ColumnIndex >= dgvStocks.Columns.Count)
+                return;
+                
+            var item = virtualModeData[e.RowIndex];
+            if (item == null)
+                return;
+                
+            // 通过 ColumnIndex 获取列名
+            string columnName = dgvStocks.Columns[e.ColumnIndex].Name;
+                
+            try
+            {
+                switch (columnName)
+                {
+                    case "Index":
+                        e.Value = (e.RowIndex + 1).ToString();
+                        break;
+                    case "StockName":
+                        string displayName = item.StockName;
+                        if (string.IsNullOrEmpty(displayName))
+                        {
+                            if (!string.IsNullOrEmpty(item.StockCode))
+                            {
+                                displayName = item.StockCode.Length > 4 ? item.StockCode.Substring(0, 4) : item.StockCode;
+                            }
+                            else
+                            {
+                                displayName = "";
+                            }
+                        }
+                        else if (displayName.Length > 4)
+                        {
+                            displayName = displayName.Substring(0, 4);
+                        }
+                        e.Value = displayName;
+                        break;
+                    case "ChangePercent":
+                        StringBuilder percentSb = new StringBuilder();
+                        percentSb.Append(item.ChangePercent.ToString("F2"));
+                        percentSb.Append("%");
+                        e.Value = percentSb.ToString();
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                StringBuilder sb = new StringBuilder("虚拟模式获取单元格值失败: ");
+                sb.Append(ex.Message);
+                Logger.Instance.Error(sb.ToString());
+            }
+        }
+        
+        /// <summary>
+        /// 虚拟模式：CellFormatting 事件处理（设置单元格样式，特别是涨幅列的颜色）
+        /// </summary>
+        private void DgvStocks_CellFormatting(object sender, DataGridViewCellFormattingEventArgs e)
+        {
+            if (!useVirtualMode || virtualModeData == null || e.RowIndex < 0 || e.RowIndex >= virtualModeData.Count)
+                return;
+                
+            if (dgvStocks == null || e.ColumnIndex < 0 || e.ColumnIndex >= dgvStocks.Columns.Count)
+                return;
+                
+            // 通过 ColumnIndex 获取列名
+            string columnName = dgvStocks.Columns[e.ColumnIndex].Name;
+                
+            if (columnName == "ChangePercent")
+            {
+                var item = virtualModeData[e.RowIndex];
+                if (item != null)
+                {
+                    float changePercent = item.ChangePercent;
+                    if (changePercent > 0.0001f)
+                    {
+                        e.CellStyle.ForeColor = Color.Red;
+                        e.CellStyle.SelectionForeColor = Color.Red;
+                    }
+                    else if (changePercent < -0.0001f)
+                    {
+                        e.CellStyle.ForeColor = Color.Green;
+                        e.CellStyle.SelectionForeColor = Color.Green;
+                    }
+                    else
+                    {
+                        e.CellStyle.ForeColor = Color.White;
+                        e.CellStyle.SelectionForeColor = Color.White;
+                    }
+                    e.CellStyle.Alignment = DataGridViewContentAlignment.MiddleRight;
+                    e.CellStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
+                }
+            }
         }
     }
     
@@ -2175,6 +2375,71 @@ namespace HaiLiDrvDemo
 
         private float _changePercent;
         public float ChangePercent { get { return _changePercent; } set { _changePercent = value; } }
+        
+        /// <summary>
+        /// 重置对象以便重用
+        /// </summary>
+        public void Reset()
+        {
+            _stockCode = null;
+            _stockName = null;
+            _newPrice = 0;
+            _changePercent = 0;
+        }
+    }
+    
+    /// <summary>
+    /// StockDisplayItem 对象池（减少GC压力，提高性能）
+    /// </summary>
+    public static class StockDisplayItemPool
+    {
+        private static readonly Queue<StockDisplayItem> pool = new Queue<StockDisplayItem>();
+        private static readonly object poolLock = new object();
+        private const int MaxPoolSize = 100;  // 最大池大小
+        
+        /// <summary>
+        /// 从对象池获取一个对象
+        /// </summary>
+        public static StockDisplayItem Get()
+        {
+            lock (poolLock)
+            {
+                if (pool.Count > 0)
+                {
+                    return pool.Dequeue();
+                }
+            }
+            return new StockDisplayItem();
+        }
+        
+        /// <summary>
+        /// 将对象返回到对象池
+        /// </summary>
+        public static void Return(StockDisplayItem item)
+        {
+            if (item == null) return;
+            
+            item.Reset();
+            
+            lock (poolLock)
+            {
+                if (pool.Count < MaxPoolSize)
+                {
+                    pool.Enqueue(item);
+                }
+            }
+        }
+        
+        /// <summary>
+        /// 清理对象池
+        /// </summary>
+        public static void Clear()
+        {
+            lock (poolLock)
+            {
+                pool.Clear();
+            }
+        }
     }
 }
 

@@ -539,11 +539,18 @@ namespace HaiLiDrvDemo
                     logFileWriter = null;
                 }
                 
-                // 停止定时器
+                // 停止并释放定时器（防止内存泄漏）
                 if (fileFlushTimer != null)
                 {
                     fileFlushTimer.Stop();
+                    fileFlushTimer.Dispose();
                     fileFlushTimer = null;
+                }
+                if (logFlushTimer != null)
+                {
+                    logFlushTimer.Stop();
+                    logFlushTimer.Dispose();
+                    logFlushTimer = null;
                 }
             }
             catch (Exception ex)
