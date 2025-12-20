@@ -310,6 +310,22 @@ namespace HaiLiDrvDemo
             // }
             
             isRunning = false;
+            
+            // 释放AutoResetEvent资源（防止内存泄漏）
+            try
+            {
+                if (realTimeDataAvailableEvent != null)
+                {
+                    realTimeDataAvailableEvent.Close();
+                    realTimeDataAvailableEvent = null;
+                }
+                if (otherDataAvailableEvent != null)
+                {
+                    otherDataAvailableEvent.Close();
+                    otherDataAvailableEvent = null;
+                }
+            }
+            catch { }
         }
 
         /// <summary>

@@ -2296,6 +2296,26 @@ namespace HaiLiDrvDemo
                         dataReceiveMonitorTimer.Dispose();
                         dataReceiveMonitorTimer = null;
                     }
+                    if (statusUpdateTimer != null)
+                    {
+                        statusUpdateTimer.Stop();
+                        statusUpdateTimer.Dispose();
+                        statusUpdateTimer = null;
+                    }
+                    // 清理f10TimeoutTimer（如果存在）
+                    // 注意：f10TimeoutTimer被注释掉了，但为了安全，检查并清理
+                    var f10TimerField = typeof(Form1).GetField("f10TimeoutTimer", 
+                        System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
+                    if (f10TimerField != null)
+                    {
+                        var f10Timer = f10TimerField.GetValue(this) as System.Windows.Forms.Timer;
+                        if (f10Timer != null)
+                        {
+                            f10Timer.Stop();
+                            f10Timer.Dispose();
+                            f10TimerField.SetValue(this, null);
+                        }
+                    }
                 }
                 catch { }
                 
@@ -2336,7 +2356,17 @@ namespace HaiLiDrvDemo
                     boardPanels.Clear();
                 }
                 
-                // 5. 停止数据队列（设置超时，避免长时间等待）
+                // 5. 清理DataManager资源（释放定时器）
+                if (dataManager != null)
+                {
+                    try
+                    {
+                        dataManager.Cleanup();
+                    }
+                    catch { }
+                }
+                
+                // 6. 停止数据队列（设置超时，避免长时间等待）
                 if (dataQueue != null)
                 {
                     try
@@ -2346,7 +2376,7 @@ namespace HaiLiDrvDemo
                     catch { }
                 }
                 
-                // 6. 停止数据接收（重要：在窗体关闭前完成所有消息处理）
+                // 7. 停止数据接收（重要：在窗体关闭前完成所有消息处理）
                 if (isReceivingData && dataCollector != null)
                 {
                     try
@@ -2367,7 +2397,17 @@ namespace HaiLiDrvDemo
                     }
                 }
                 
-                // 7. 清理日志资源（最后执行）
+                // 8. 清理MinuteDataManager资源
+                if (minuteDataManager != null)
+                {
+                    try
+                    {
+                        minuteDataManager.Cleanup();
+                    }
+                    catch { }
+                }
+                
+                // 9. 清理日志资源（最后执行）
                 try
                 {
                     Logger.Instance.Cleanup();

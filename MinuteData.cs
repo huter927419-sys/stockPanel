@@ -413,6 +413,16 @@ namespace HaiLiDrvDemo
         {
             minuteDataCache.Clear();
             minute5DataCache.Clear();
+            minuteDataIndex.Clear();
+            minute5DataIndex.Clear();
+        }
+        
+        /// <summary>
+        /// 清理资源（程序退出时调用，防止内存泄漏）
+        /// </summary>
+        public void Cleanup()
+        {
+            ClearAllData();
         }
     }
 }

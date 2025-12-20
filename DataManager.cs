@@ -334,6 +334,26 @@ namespace HaiLiDrvDemo
         }
         
         /// <summary>
+        /// 清理资源（程序退出时调用，防止内存泄漏）
+        /// </summary>
+        public void Cleanup()
+        {
+            // 停止并释放定时器
+            lock (dataUpdateLock)
+            {
+                if (dataUpdateTimer != null)
+                {
+                    dataUpdateTimer.Dispose();
+                    dataUpdateTimer = null;
+                }
+                dataUpdatePending = false;
+            }
+            
+            // 清理事件订阅
+            DataUpdated = null;
+        }
+        
+        /// <summary>
         /// 获取缓存统计信息（用于内存监控）
         /// </summary>
         public string GetCacheStatistics()

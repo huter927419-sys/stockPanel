@@ -497,6 +497,23 @@ namespace HaiLiDrvDemo
         /// <summary>
         /// 清理过期缓存
         /// </summary>
+        /// <summary>
+        /// 清理资源（程序退出时调用，防止内存泄漏）
+        /// </summary>
+        public void Cleanup()
+        {
+            try
+            {
+                if (updateTimer != null)
+                {
+                    updateTimer.Stop();
+                    updateTimer.Dispose();
+                    updateTimer = null;
+                }
+            }
+            catch { }
+        }
+        
         public void CleanupExpiredCache(int daysToKeep)
         {
             try

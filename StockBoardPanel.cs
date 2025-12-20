@@ -34,6 +34,9 @@ namespace HaiLiDrvDemo
         private List<StockDisplayItem> virtualModeData = new List<StockDisplayItem>();
         private bool useVirtualMode = false;  // 当数据量超过100条时启用虚拟模式
         
+        // ControlAdded事件处理引用（用于取消订阅，防止内存泄漏）
+        private ControlEventHandler controlAddedHandler;
+        
         // 调整大小相关变量
         private bool isResizing = false;
         private ResizeDirection resizeDirection = ResizeDirection.None;
@@ -194,10 +197,12 @@ namespace HaiLiDrvDemo
             this.MouseLeave += StockBoardPanel_MouseLeave;
             
             // 为所有子控件也添加鼠标事件处理（用于边缘检测和调整大小）
-            this.ControlAdded += (s, e) =>
+            // 使用实例方法引用，避免lambda捕获导致的内存泄漏
+            controlAddedHandler = (s, e) =>
             {
                 SetupChildControlResizeHandlers(e.Control);
             };
+            this.ControlAdded += controlAddedHandler;
             
             // 为已存在的子控件设置事件处理
             foreach (Control child in this.Controls)
@@ -2220,6 +2225,13 @@ namespace HaiLiDrvDemo
                     refreshTimer = null;
                 }
                 
+                // 取消ControlAdded事件订阅（防止内存泄漏）
+                if (controlAddedHandler != null)
+                {
+                    this.ControlAdded -= controlAddedHandler;
+                    controlAddedHandler = null;
+                }
+                
                 // 清理 DataGridView 中使用的对象，返回到对象池
                 if (dgvStocks != null && !dgvStocks.IsDisposed)
                 {
@@ -2253,6 +2265,9 @@ namespace HaiLiDrvDemo
                         virtualModeData.Clear();
                     }
                 }
+                
+                // 取消Resize事件订阅
+                this.Resize -= StockBoardPanel_Resize;
             }
             base.Dispose(disposing);
         }
