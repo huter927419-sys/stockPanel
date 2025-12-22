@@ -376,9 +376,10 @@ namespace HaiLiDrvDemo
 
             try
             {
-                // 每个面板的固定尺寸（矩形 - 宽174 × 高184，可显示6行股票）
+                // 每个面板的固定尺寸（矩形 - 宽174 × 高310，正好显示10行股票）
+                // 计算：表头30 + 10行×28 = 310像素（精确计算，无多余空间）
                 const int panelWidth = 174;   // 固定宽度174像素（紧凑尺寸，节省空间）
-                const int panelHeight = 184;  // 固定高度184像素（显示6行股票，可展示更多面板）
+                const int panelHeight = 310;  // 固定高度310像素（正好显示10行股票，无多余空间）
 
                 Logger.Instance.Debug(string.Format("刷新布局: 容器大小={0}x{1}, 面板数量={2}",
                     boardContainer.ClientSize.Width, boardContainer.ClientSize.Height, boardPanels.Count));

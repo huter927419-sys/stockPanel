@@ -208,6 +208,11 @@ namespace HaiLiDrvDemo
         /// 队列最大大小（超过此值会丢弃数据）
         /// </summary>
         private const int MAX_QUEUE_SIZE = 5000;
+        
+        /// <summary>
+        /// 内存压力监控：当队列积压过多时，强制清理旧数据
+        /// </summary>
+        private const int MEMORY_PRESSURE_THRESHOLD = 3000;
 
         /// <summary>
         /// 构造函数
@@ -273,8 +278,14 @@ namespace HaiLiDrvDemo
             shouldStop = true;
             
             // 唤醒所有线程以便退出
-            realTimeDataAvailableEvent.Set();
-            otherDataAvailableEvent.Set();
+            if (realTimeDataAvailableEvent != null)
+            {
+                realTimeDataAvailableEvent.Set();
+            }
+            if (otherDataAvailableEvent != null)
+            {
+                otherDataAvailableEvent.Set();
+            }
             // F10功能已禁用
             // f10DataAvailableEvent.Set();
             
@@ -311,6 +322,9 @@ namespace HaiLiDrvDemo
             
             isRunning = false;
             
+            // 重要：清空队列并释放所有数据包的缓冲区（防止内存泄漏）
+            ClearQueues();
+            
             // 释放AutoResetEvent资源（防止内存泄漏）
             try
             {
@@ -326,6 +340,138 @@ namespace HaiLiDrvDemo
                 }
             }
             catch { }
+        }
+        
+        /// <summary>
+        /// 清理旧数据包以释放内存（在内存压力时调用）
+        /// </summary>
+        private void ClearOldPackets(int count)
+        {
+            try
+            {
+                int clearedCount = 0;
+                
+                // 优先清理其他数据队列（实时数据更重要）
+                while (clearedCount < count && !otherDataQueue.IsEmpty)
+                {
+                    if (otherDataQueue.TryDequeue(out DataPacket packet))
+                    {
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                            clearedCount++;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                // 如果还需要清理更多，清理实时数据队列（但保留最新的）
+                while (clearedCount < count && realTimeQueue.Count > 100 && !realTimeQueue.IsEmpty)
+                {
+                    if (realTimeQueue.TryDequeue(out DataPacket packet))
+                    {
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                            clearedCount++;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                if (clearedCount > 0)
+                {
+                    Logger.Instance.Info(string.Format("内存压力处理: 已清理 {0} 个旧数据包", clearedCount));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.Warning(string.Format("清理旧数据包时出错: {0}", ex.Message));
+            }
+        }
+        
+        /// <summary>
+        /// 清空所有队列并释放数据包资源（防止内存泄漏）
+        /// </summary>
+        private void ClearQueues()
+        {
+            try
+            {
+                int clearedCount = 0;
+                
+                // 清空实时数据队列
+                while (!realTimeQueue.IsEmpty)
+                {
+                    if (realTimeQueue.TryDequeue(out DataPacket packet))
+                    {
+                        // 释放数据包的缓冲区
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                            clearedCount++;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                // 清空其他数据队列
+                while (!otherDataQueue.IsEmpty)
+                {
+                    if (otherDataQueue.TryDequeue(out DataPacket packet))
+                    {
+                        // 释放数据包的缓冲区
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                            clearedCount++;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                // 清空兼容队列
+                while (!dataQueue.IsEmpty)
+                {
+                    if (dataQueue.TryDequeue(out DataPacket packet))
+                    {
+                        // 释放数据包的缓冲区
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                        }
+                    }
+                    else
+                    {
+                        break;
+                    }
+                }
+                
+                if (clearedCount > 0)
+                {
+                    Logger.Instance.Info(string.Format("已清空队列并释放 {0} 个数据包的缓冲区", clearedCount));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.Instance.Warning(string.Format("清空队列时出错: {0}", ex.Message));
+            }
         }
 
         /// <summary>
@@ -738,6 +884,13 @@ namespace HaiLiDrvDemo
                 {
                     Logger.Instance.Warning(string.Format("数据队列积压: 实时={0}, 其他={1}, 总计={2}", realTimeQueue.Count, otherDataQueue.Count, totalQueueSize));
                 }
+                
+                // 内存压力处理：当队列积压过多时，丢弃部分旧数据以释放内存
+                if (totalQueueSize >= MEMORY_PRESSURE_THRESHOLD)
+                {
+                    Logger.Instance.Warning(string.Format("检测到内存压力，开始清理旧数据: 队列大小={0}", totalQueueSize));
+                    ClearOldPackets(500);  // 丢弃500个旧数据包
+                }
 
                 // 根据数据类型通知相应的处理线程
                 if (type == DataPacketType.RealTimeData)
@@ -884,6 +1037,15 @@ namespace HaiLiDrvDemo
                         Logger.Instance.Error(string.Format("处理实时数据包失败: {0}", ex.Message));
                         Logger.Instance.Error(string.Format("异常堆栈: {0}", ex.StackTrace));
                     }
+                    finally
+                    {
+                        // 确保数据包的缓冲区被释放（即使处理失败）
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                        }
+                    }
                 }
                 else
                 {
@@ -918,6 +1080,15 @@ namespace HaiLiDrvDemo
                     {
                         Logger.Instance.Error(string.Format("处理其他数据包失败: {0}, 类型: {1}", ex.Message, packet.Type));
                         Logger.Instance.Error(string.Format("异常堆栈: {0}", ex.StackTrace));
+                    }
+                    finally
+                    {
+                        // 确保数据包的缓冲区被释放（即使处理失败）
+                        if (packet != null && packet.DataBuffer != null)
+                        {
+                            packet.DataBuffer = null;
+                            packet.DataSize = 0;
+                        }
                     }
                 }
                 else
@@ -1082,6 +1253,15 @@ namespace HaiLiDrvDemo
                                 // 从buffer重新读取结构体
                                 // 使用局部变量确保handle在finally中释放
                                 GCHandle tempHandle = GCHandle.Alloc(packet.DataBuffer, GCHandleType.Pinned);
+                                // 如果之前已经有pinnedHandle，先释放它
+                                if (pinnedHandle.HasValue)
+                                {
+                                    try
+                                    {
+                                        pinnedHandle.Value.Free();
+                                    }
+                                    catch { }
+                                }
                                 pinnedHandle = tempHandle;  // 保存引用以便在finally中释放
                                 try
                                 {
@@ -1105,9 +1285,17 @@ namespace HaiLiDrvDemo
                                 }
                                 finally
                                 {
+                                    // 确保GCHandle被释放（即使发生异常）
                                     if (pinnedHandle.HasValue)
                                     {
-                                        pinnedHandle.Value.Free();
+                                        try
+                                        {
+                                            pinnedHandle.Value.Free();
+                                        }
+                                        catch (Exception freeEx)
+                                        {
+                                            Logger.Instance.Warning(string.Format("释放GCHandle失败: {0}", freeEx.Message));
+                                        }
                                         pinnedHandle = null;
                                     }
                                 }
@@ -1241,6 +1429,21 @@ namespace HaiLiDrvDemo
                     {
                         Logger.Instance.Error(string.Format("释放非托管内存失败: {0}", ex.Message));
                         Logger.Instance.Error(string.Format("dataPtr={0}, needFree={1}", dataPtr.ToInt64(), needFree));
+                    }
+                }
+                
+                // 重要：清空数据包的缓冲区，释放内存（防止内存泄漏）
+                if (packet != null && packet.DataBuffer != null)
+                {
+                    try
+                    {
+                        // 清空缓冲区引用，让GC可以回收
+                        packet.DataBuffer = null;
+                        packet.DataSize = 0;
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.Instance.Warning(string.Format("清空数据包缓冲区失败: {0}", ex.Message));
                     }
                 }
             }

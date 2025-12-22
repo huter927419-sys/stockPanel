@@ -4,6 +4,7 @@ using System.Drawing;
 using System.Linq;
 using System.Text;
 using System.Windows.Forms;
+using System.Runtime.InteropServices;
 
 namespace HaiLiDrvDemo
 {
@@ -646,7 +647,7 @@ namespace HaiLiDrvDemo
         
         private void InitializeComponent()
         {
-            this.BackColor = Color.FromArgb(40, 40, 40);
+            this.BackColor = Color.Black;  // 纯黑色背景
             this.BorderStyle = BorderStyle.FixedSingle;
             
             // 确保面板不使用 Dock，防止被拉伸变形
@@ -664,7 +665,7 @@ namespace HaiLiDrvDemo
             {
                 Dock = DockStyle.Top,
                 Height = 30,
-                BackColor = Color.FromArgb(50, 50, 50)
+                BackColor = Color.FromArgb(20, 20, 20)  // 深灰色，与纯黑背景区分
             };
             
             // 创建一个容器面板来放置按钮（靠右对齐，避免与名称框重叠）
@@ -685,7 +686,7 @@ namespace HaiLiDrvDemo
                 Location = new Point(5, 5),
                 Size = new Size(80, 20),  // 名称框宽度
                 Text = displayName,  // 使用实际的名称
-                BackColor = Color.FromArgb(60, 60, 60),
+                BackColor = Color.FromArgb(20, 20, 20),  // 深灰色，与纯黑背景协调
                 ForeColor = Color.White,
                 BorderStyle = BorderStyle.FixedSingle,
                 Font = new Font("Microsoft YaHei", 8.5F, FontStyle.Regular),  // 设置合适的字体大小
@@ -809,7 +810,7 @@ namespace HaiLiDrvDemo
             dgvStocks = new DataGridView
             {
                 Dock = DockStyle.Fill,
-                BackgroundColor = Color.FromArgb(40, 40, 40),
+                BackgroundColor = Color.Black,  // 纯黑色背景
                 BorderStyle = BorderStyle.None,
                 AllowUserToAddRows = false,
                 AllowUserToDeleteRows = false,
@@ -817,7 +818,8 @@ namespace HaiLiDrvDemo
                 ReadOnly = true,
                 SelectionMode = DataGridViewSelectionMode.FullRowSelect,
                 RowHeadersVisible = false,
-                ColumnHeadersVisible = true  // 确保列标题始终显示，即使没有数据
+                ColumnHeadersVisible = true,  // 确保列标题始终显示，即使没有数据
+                ScrollBars = ScrollBars.None  // 默认隐藏滚动条，鼠标进入时显示
             };
 
             // 先设置高度和样式，再设置HeightSizeMode（顺序很重要！）
@@ -844,22 +846,22 @@ namespace HaiLiDrvDemo
             }
 
             // 设置表格样式
-            dgvStocks.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(50, 50, 50);
+            dgvStocks.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
             dgvStocks.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
             dgvStocks.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
             dgvStocks.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-            dgvStocks.DefaultCellStyle.BackColor = Color.FromArgb(40, 40, 40);
+            dgvStocks.DefaultCellStyle.BackColor = Color.Black;  // 纯黑色背景
             dgvStocks.DefaultCellStyle.ForeColor = Color.White;
             dgvStocks.DefaultCellStyle.Font = new Font("Microsoft YaHei", 9);
             dgvStocks.DefaultCellStyle.SelectionBackColor = Color.FromArgb(0, 120, 215);  // 蓝色高亮，类似Windows选中效果
             dgvStocks.DefaultCellStyle.SelectionForeColor = Color.White;  // 白色文字
 
             // 设置交替行颜色，增强可读性
-            dgvStocks.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(45, 45, 45);  // 稍微亮一点的灰色
+            dgvStocks.AlternatingRowsDefaultCellStyle.BackColor = Color.FromArgb(10, 10, 10);  // 稍微亮一点的黑色
             dgvStocks.AlternatingRowsDefaultCellStyle.SelectionBackColor = Color.FromArgb(0, 120, 215);  // 选中时保持蓝色
             dgvStocks.AlternatingRowsDefaultCellStyle.SelectionForeColor = Color.White;
 
-            dgvStocks.RowTemplate.Height = 24;  // 设置行高
+            dgvStocks.RowTemplate.Height = 28;  // 增加行高，让10条数据的高度增加（从24改为28）
             dgvStocks.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.None;  // 手动控制列宽
             
             // 添加列：序号、名称、涨幅
@@ -876,6 +878,91 @@ namespace HaiLiDrvDemo
             dgvStocks.HandleCreated += DgvStocks_HandleCreated;
             dgvStocks.Paint += DgvStocks_Paint;
             dgvStocks.VisibleChanged += DgvStocks_VisibleChanged;
+            
+            // 自定义滚动条颜色（通过Windows API）
+            dgvStocks.HandleCreated += (s, e) =>
+            {
+                // 句柄创建后，设置滚动条为深色主题
+                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
+                {
+                    try
+                    {
+                        // 方法1：尝试使用深色滚动条主题（Windows 10/11）
+                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
+                        
+                        // 方法2：如果方法1失败，回退到禁用主题
+                        if (SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null) != 0)
+                        {
+                            SetWindowTheme(dgvStocks.Handle, "", "");
+                        }
+                        
+                        // 发送主题变更消息，强制刷新滚动条
+                        SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
+                        
+                        // 强制刷新滚动条
+                        dgvStocks.Invalidate(true);
+                        dgvStocks.Update();
+                    }
+                    catch
+                    {
+                        // 如果设置失败，忽略错误
+                    }
+                }
+            };
+            
+            // 订阅Paint事件，在绘制时也尝试设置滚动条样式
+            dgvStocks.Paint += DgvStocks_CustomScrollBarPaint;
+            
+            // 订阅Resize事件，在大小改变时也刷新滚动条
+            dgvStocks.Resize += (s, e) =>
+            {
+                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
+                {
+                    try
+                    {
+                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
+                        dgvStocks.Invalidate(true);
+                    }
+                    catch { }
+                }
+            };
+            
+            // 统一的辅助方法：显示滚动条（如果数据超过10条）
+            // 使用统一的逻辑，避免代码重复，提高响应速度
+            Action showScrollBarIfNeeded = () =>
+            {
+                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.Rows.Count > 10)
+                {
+                    dgvStocks.ScrollBars = ScrollBars.Vertical;
+                }
+            };
+            
+            // 实现滚动条自动显示/隐藏：多种触发条件显示，离开时隐藏
+            // 1. 鼠标进入时显示（最常用）
+            dgvStocks.MouseEnter += (s, e) => showScrollBarIfNeeded();
+            
+            // 2. 鼠标移动时显示（更灵敏，鼠标一移动就显示）
+            dgvStocks.MouseMove += (s, e) => showScrollBarIfNeeded();
+            
+            // 3. 点击时显示
+            dgvStocks.MouseClick += (s, e) => showScrollBarIfNeeded();
+            
+            // 4. 选择数据行时显示（重要：用户选择行时显示）
+            dgvStocks.SelectionChanged += (s, e) => showScrollBarIfNeeded();
+            
+            // 5. 鼠标离开时隐藏滚动条（避免刺眼）
+            dgvStocks.MouseLeave += (s, e) =>
+            {
+                if (dgvStocks != null && !dgvStocks.IsDisposed)
+                {
+                    dgvStocks.ScrollBars = ScrollBars.None;
+                }
+            };
+            
+            // 面板本身也监听鼠标事件，确保点击面板时显示滚动条
+            this.MouseEnter += (s, e) => showScrollBarIfNeeded();
+            this.MouseMove += (s, e) => showScrollBarIfNeeded();
+            this.MouseClick += (s, e) => showScrollBarIfNeeded();
             
             // 初始化时显示空表格（只有列标题，没有数据行）
             // 这样即使没有数据，用户也能看到列名称
@@ -933,10 +1020,10 @@ namespace HaiLiDrvDemo
                     {
                         // 创建新的样式对象（必须创建新对象，不能直接修改）
                         DataGridViewCellStyle headerStyle = new DataGridViewCellStyle();
-                        headerStyle.BackColor = Color.FromArgb(50, 50, 50);
+                        headerStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
                         headerStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
                         headerStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                        headerStyle.SelectionBackColor = Color.FromArgb(50, 50, 50);
+                        headerStyle.SelectionBackColor = Color.FromArgb(20, 20, 20);
                         headerStyle.WrapMode = DataGridViewTriState.False;  // 不换行
                         
                         // 除了涨幅列用红色，其他列用白色
@@ -1026,6 +1113,58 @@ namespace HaiLiDrvDemo
                     Logger.Instance.Debug(string.Format("Paint事件检测到列标题问题: Visible={0}, Height={1}，正在修复", dgvStocks.ColumnHeadersVisible, dgvStocks.ColumnHeadersHeight));
                     EnsureColumnHeadersVisible();
                 }
+            }
+        }
+        
+        // Windows API 用于自定义滚动条颜色
+        [DllImport("uxtheme.dll", CharSet = CharSet.Unicode)]
+        private static extern int SetWindowTheme(IntPtr hWnd, string pszSubAppName, string pszSubIdList);
+        
+        [DllImport("user32.dll")]
+        private static extern int ShowScrollBar(IntPtr hWnd, int wBar, bool bShow);
+        
+        [DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
+        
+        private const int SB_HORZ = 0;
+        private const int SB_VERT = 1;
+        private const int SB_BOTH = 3;
+        private const uint WM_THEMECHANGED = 0x031A;
+        
+        /// <summary>
+        /// 自定义滚动条绘制（深色主题，不刺眼）
+        /// 使用多种方法尝试设置滚动条为深色
+        /// </summary>
+        private void DgvStocks_CustomScrollBarPaint(object sender, PaintEventArgs e)
+        {
+            // 使用Windows API设置滚动条为深色主题
+            try
+            {
+                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
+                {
+                    // 方法1：禁用Windows主题，让滚动条使用系统默认样式
+                    SetWindowTheme(dgvStocks.Handle, "", "");
+                    
+                    // 方法2：发送主题变更消息，强制刷新滚动条
+                    SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
+                    
+                    // 方法3：尝试使用深色滚动条主题（Windows 10/11）
+                    // 注意：这需要系统支持深色滚动条
+                    try
+                    {
+                        // 尝试设置滚动条为深色主题
+                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
+                    }
+                    catch
+                    {
+                        // 如果失败，回退到默认方法
+                        SetWindowTheme(dgvStocks.Handle, "", "");
+                    }
+                }
+            }
+            catch
+            {
+                // 如果设置失败，忽略错误（不影响功能）
             }
         }
         
@@ -1458,7 +1597,7 @@ namespace HaiLiDrvDemo
             colIndex.DefaultCellStyle.Font = new Font("Microsoft YaHei", 8);
             // 设置列标题样式（创建新样式对象）
             DataGridViewCellStyle indexHeaderStyle = new DataGridViewCellStyle();
-            indexHeaderStyle.BackColor = Color.FromArgb(50, 50, 50);
+            indexHeaderStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
             indexHeaderStyle.ForeColor = Color.White;
             indexHeaderStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
             indexHeaderStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -1482,7 +1621,7 @@ namespace HaiLiDrvDemo
             colName.DefaultCellStyle.Padding = new Padding(3, 0, 0, 0);  // 减小左边距，从5改为3，节省空间
             // 设置列标题样式（创建新样式对象）
             DataGridViewCellStyle nameHeaderStyle = new DataGridViewCellStyle();
-            nameHeaderStyle.BackColor = Color.FromArgb(50, 50, 50);
+            nameHeaderStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
             nameHeaderStyle.ForeColor = Color.White;
             nameHeaderStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
             nameHeaderStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -1508,7 +1647,7 @@ namespace HaiLiDrvDemo
             colChange.DefaultCellStyle.ForeColor = Color.Red;  // 默认用红色
             // 表头用红色（创建新样式对象）
             DataGridViewCellStyle changeHeaderStyle = new DataGridViewCellStyle();
-            changeHeaderStyle.BackColor = Color.FromArgb(50, 50, 50);
+            changeHeaderStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
             changeHeaderStyle.ForeColor = Color.Red;
             changeHeaderStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
             changeHeaderStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -1542,7 +1681,11 @@ namespace HaiLiDrvDemo
                     return;
                 }
                 
+                // 不再限制显示条数，显示所有数据（但通过滚动条自动隐藏来避免刺眼）
+                // 注意：如果数据超过10条，滚动条会在鼠标进入时自动显示
+                
                 // 根据数据量决定是否使用虚拟模式（超过100条时启用）
+                // 注意：由于已限制为10条，这里实际上不会启用虚拟模式
                 bool shouldUseVirtualMode = displayItems != null && displayItems.Count > 100;
                 if (shouldUseVirtualMode != useVirtualMode)
                 {
@@ -1634,6 +1777,17 @@ namespace HaiLiDrvDemo
                         InitializeDataGridViewColumns();
                     }
                     
+                    // 先返回旧对象到对象池（防止内存泄漏）
+                    // 重要：在清空行之前，先释放所有row.Tag中的对象
+                    foreach (DataGridViewRow oldRow in dgvStocks.Rows)
+                    {
+                        if (oldRow.Tag is StockDisplayItem oldItem)
+                        {
+                            StockDisplayItemPool.Return(oldItem);
+                            oldRow.Tag = null;
+                        }
+                    }
+                    
                     // 先清空数据源（但不清除列，保留列标题）
                     // 注意：不要使用 DataSource = null，这会清除列
                     // 只清空行，保留列定义
@@ -1649,6 +1803,20 @@ namespace HaiLiDrvDemo
                 dgvStocks.ColumnHeadersHeight = 28;  // 确保列标题高度不为0（关键！）
                 dgvStocks.EnableHeadersVisualStyles = false;  // 禁用系统样式，使用自定义样式
                 dgvStocks.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;  // 禁止调整大小
+                
+                // 数据更新后，根据数据条数决定滚动条状态
+                // 如果数据超过10条，自动显示滚动条（方便用户操作，更灵敏）
+                // 如果数据不超过10条，隐藏滚动条（避免刺眼）
+                if (dgvStocks.Rows.Count > 10)
+                {
+                    // 数据超过10条，自动显示滚动条（方便用户查看和操作）
+                    dgvStocks.ScrollBars = ScrollBars.Vertical;
+                }
+                else
+                {
+                    // 数据不超过10条，隐藏滚动条（避免刺眼）
+                    dgvStocks.ScrollBars = ScrollBars.None;
+                }
 
                 // 强制设置列标题样式（确保每列的标题都正确显示）
                 // 使用创建新样式对象的方式，确保样式被应用
@@ -1658,10 +1826,10 @@ namespace HaiLiDrvDemo
                     {
                         // 创建新的样式对象
                         DataGridViewCellStyle headerStyle = new DataGridViewCellStyle();
-                        headerStyle.BackColor = Color.FromArgb(50, 50, 50);
+                        headerStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
                         headerStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
                         headerStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
-                        headerStyle.SelectionBackColor = Color.FromArgb(50, 50, 50);
+                        headerStyle.SelectionBackColor = Color.FromArgb(20, 20, 20);
                         
                         // 除了涨幅列用红色，其他列用白色
                         if (col.Name == "ChangePercent")
@@ -1804,7 +1972,7 @@ namespace HaiLiDrvDemo
                 dgvStocks.EnableHeadersVisualStyles = false;  // 禁用系统样式，使用自定义样式
                 
                 // 确保列标题样式正确（必须在设置列标题可见之后）
-                dgvStocks.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(50, 50, 50);
+                dgvStocks.ColumnHeadersDefaultCellStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
                 dgvStocks.ColumnHeadersDefaultCellStyle.ForeColor = Color.White;
                 dgvStocks.ColumnHeadersDefaultCellStyle.Font = new Font("Microsoft YaHei", 9, FontStyle.Bold);
                 dgvStocks.ColumnHeadersDefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleCenter;
@@ -1939,7 +2107,7 @@ namespace HaiLiDrvDemo
                 Text = "添加股票",
                 Size = new Size(300, 120),
                 StartPosition = FormStartPosition.CenterParent,
-                BackColor = Color.FromArgb(40, 40, 40),
+                BackColor = Color.Black,  // 纯黑色背景
                 FormBorderStyle = FormBorderStyle.FixedDialog,
                 MaximizeBox = false,
                 MinimizeBox = false
@@ -1958,7 +2126,7 @@ namespace HaiLiDrvDemo
             {
                 Location = new Point(10, 40),
                 Size = new Size(260, 20),
-                BackColor = Color.FromArgb(60, 60, 60),
+                BackColor = Color.FromArgb(20, 20, 20),  // 深灰色，与纯黑背景协调
                 ForeColor = Color.White
             };
             inputForm.Controls.Add(txtInput);
@@ -1968,7 +2136,7 @@ namespace HaiLiDrvDemo
             {
                 Location = new Point(10, 65),
                 Size = new Size(260, 100),
-                BackColor = Color.FromArgb(60, 60, 60),
+                BackColor = Color.FromArgb(20, 20, 20),  // 深灰色，与纯黑背景协调
                 ForeColor = Color.White,
                 Visible = false
             };
@@ -2218,56 +2386,91 @@ namespace HaiLiDrvDemo
         {
             if (disposing)
             {
+                // 停止并释放定时器（防止内存泄漏）
                 if (refreshTimer != null)
                 {
-                    refreshTimer.Stop();
-                    refreshTimer.Dispose();
+                    try
+                    {
+                        refreshTimer.Tick -= RefreshTimer_Tick;  // 取消事件订阅
+                        refreshTimer.Stop();
+                        refreshTimer.Dispose();
+                    }
+                    catch { }
                     refreshTimer = null;
                 }
                 
                 // 取消ControlAdded事件订阅（防止内存泄漏）
                 if (controlAddedHandler != null)
                 {
-                    this.ControlAdded -= controlAddedHandler;
+                    try
+                    {
+                        this.ControlAdded -= controlAddedHandler;
+                    }
+                    catch { }
                     controlAddedHandler = null;
                 }
                 
                 // 清理 DataGridView 中使用的对象，返回到对象池
                 if (dgvStocks != null && !dgvStocks.IsDisposed)
                 {
-                    // 取消虚拟模式事件
-                    if (useVirtualMode)
+                    try
                     {
-                        dgvStocks.CellValueNeeded -= DgvStocks_CellValueNeeded;
-                        dgvStocks.CellFormatting -= DgvStocks_CellFormatting;
-                    }
-                    
-                    // 返回普通模式下的对象
-                    foreach (DataGridViewRow row in dgvStocks.Rows)
-                    {
-                        if (row.Tag is StockDisplayItem item)
+                        // 取消所有命名事件订阅（防止内存泄漏）
+                        dgvStocks.HandleCreated -= DgvStocks_HandleCreated;
+                        dgvStocks.Paint -= DgvStocks_Paint;
+                        dgvStocks.VisibleChanged -= DgvStocks_VisibleChanged;
+                        dgvStocks.Paint -= DgvStocks_CustomScrollBarPaint;
+                        // 注意：匿名事件（MouseEnter、MouseLeave等）无法直接取消，但会在控件销毁时自动清理
+                        
+                        // 取消虚拟模式事件
+                        if (useVirtualMode)
                         {
-                            StockDisplayItemPool.Return(item);
-                            row.Tag = null;
+                            dgvStocks.CellValueNeeded -= DgvStocks_CellValueNeeded;
+                            dgvStocks.CellFormatting -= DgvStocks_CellFormatting;
                         }
-                    }
-                    
-                    // 返回虚拟模式下的对象
-                    if (virtualModeData != null)
-                    {
-                        foreach (var item in virtualModeData)
+                        
+                        // 返回普通模式下的对象
+                        foreach (DataGridViewRow row in dgvStocks.Rows)
                         {
-                            if (item != null)
+                            if (row.Tag is StockDisplayItem item)
                             {
                                 StockDisplayItemPool.Return(item);
+                                row.Tag = null;
                             }
                         }
-                        virtualModeData.Clear();
+                        
+                        // 返回虚拟模式下的对象
+                        if (virtualModeData != null)
+                        {
+                            foreach (var item in virtualModeData)
+                            {
+                                if (item != null)
+                                {
+                                    StockDisplayItemPool.Return(item);
+                                }
+                            }
+                            virtualModeData.Clear();
+                        }
                     }
+                    catch { }
                 }
                 
-                // 取消Resize事件订阅
-                this.Resize -= StockBoardPanel_Resize;
+                // 取消面板事件订阅
+                try
+                {
+                    this.Resize -= StockBoardPanel_Resize;
+                    this.MouseEnter -= null;
+                    this.MouseClick -= null;
+                }
+                catch { }
+                
+                // 取消板块事件订阅
+                try
+                {
+                    BoardNameChanged = null;
+                    BoardNameValidating = null;
+                }
+                catch { }
             }
             base.Dispose(disposing);
         }

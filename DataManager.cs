@@ -130,7 +130,30 @@ namespace HaiLiDrvDemo
             // 更新全局缓存（直接更新，不触发事件）
             // 注意：这里直接覆盖更新，不会导致内存无限增长
             // 因为股票数量是固定的（约1-2万只），只是不断更新这些股票的数据
-            globalStockCache[normalizedCode] = stockData;
+            // 如果已存在，直接更新现有对象，避免创建新对象（减少GC压力）
+            if (globalStockCache.ContainsKey(normalizedCode))
+            {
+                // 更新现有对象，而不是替换（减少对象创建）
+                StockData existingData = globalStockCache[normalizedCode];
+                existingData.Name = stockData.Name ?? existingData.Name;
+                existingData.LastClose = stockData.LastClose;
+                existingData.Open = stockData.Open;
+                existingData.High = stockData.High;
+                existingData.Low = stockData.Low;
+                existingData.NewPrice = stockData.NewPrice;
+                existingData.Volume = stockData.Volume;
+                existingData.Amount = stockData.Amount;
+                existingData.UpdateTime = stockData.UpdateTime;
+                existingData.MarketType = stockData.MarketType;
+                existingData.TradeTime = stockData.TradeTime;
+                existingData.CalculateChangePercent();
+                existingData.CalculateChangeAmount();
+            }
+            else
+            {
+                // 新股票，添加到缓存
+                globalStockCache[normalizedCode] = stockData;
+            }
             
             // 如果缓存过大，记录警告（用于调试）
             if (globalStockCache.Count > MAX_CACHE_SIZE)
