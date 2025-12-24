@@ -59,18 +59,25 @@ namespace HaiLiDrvDemo
 
         /// <summary>
         /// 检查股票数据是否符合筛选条件
+        /// 注意：多个筛选条件是"或"（OR）的关系，只要满足其中一个条件就通过
         /// </summary>
         public bool PassFilter(StockData stock)
         {
             if (stock == null)
                 return false;
 
+            // 如果没有任何筛选条件启用，则显示所有数据
+            if (!EnableChangePercentFilter && !EnableIntradayChangeFilter)
+                return true;
+
+            bool passChangePercent = false;
+            bool passIntradayChange = false;
+
             // 涨幅筛选
             if (EnableChangePercentFilter)
             {
                 decimal changePercent = (decimal)stock.ChangePercent;
-                if (changePercent < MinChangePercent)
-                    return false;
+                passChangePercent = changePercent >= MinChangePercent;
             }
 
             // 日内涨幅筛选（现价相对开盘价）
@@ -79,9 +86,27 @@ namespace HaiLiDrvDemo
                 if (stock.Open > 0)
                 {
                     decimal intradayChange = (decimal)(((stock.NewPrice - stock.Open) / stock.Open) * 100);
-                    if (intradayChange < MinIntradayChangePercent)
-                        return false;
+                    passIntradayChange = intradayChange >= MinIntradayChangePercent;
                 }
+            }
+
+            // "或"关系：只要满足其中一个条件就通过
+            // 如果只启用了一个筛选条件，则只检查该条件
+            // 如果启用了两个筛选条件，则只要满足其中一个就通过
+            if (EnableChangePercentFilter && EnableIntradayChangeFilter)
+            {
+                // 两个条件都启用，只要满足其中一个就通过
+                return passChangePercent || passIntradayChange;
+            }
+            else if (EnableChangePercentFilter)
+            {
+                // 只启用涨幅筛选
+                return passChangePercent;
+            }
+            else if (EnableIntradayChangeFilter)
+            {
+                // 只启用日内涨幅筛选
+                return passIntradayChange;
             }
 
             return true;

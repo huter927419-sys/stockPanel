@@ -24,6 +24,7 @@ namespace HaiLiDrvDemo
         
         private DataManager dataManager;
         private System.Windows.Forms.Timer refreshTimer;
+        private System.Windows.Forms.Timer scrollBarHideTimer;  // 延迟隐藏滚动条的定时器
 
         // 筛选设置
         private FilterSettings filterSettings = null;
@@ -882,32 +883,9 @@ namespace HaiLiDrvDemo
             // 自定义滚动条颜色（通过Windows API）
             dgvStocks.HandleCreated += (s, e) =>
             {
-                // 句柄创建后，设置滚动条为深色主题
-                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
-                {
-                    try
-                    {
-                        // 方法1：尝试使用深色滚动条主题（Windows 10/11）
-                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
-                        
-                        // 方法2：如果方法1失败，回退到禁用主题
-                        if (SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null) != 0)
-                        {
-                            SetWindowTheme(dgvStocks.Handle, "", "");
-                        }
-                        
-                        // 发送主题变更消息，强制刷新滚动条
-                        SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
-                        
-                        // 强制刷新滚动条
-                        dgvStocks.Invalidate(true);
-                        dgvStocks.Update();
-                    }
-                    catch
-                    {
-                        // 如果设置失败，忽略错误
-                    }
-                }
+                // 句柄创建后，设置滚动条为深色主题（首次创建时强制刷新一次）
+                scrollBarThemeApplied = false; // 重置标志，允许重新应用
+                ApplyDarkScrollBarTheme(forceRefresh: true);
             };
             
             // 订阅Paint事件，在绘制时也尝试设置滚动条样式
@@ -916,53 +894,182 @@ namespace HaiLiDrvDemo
             // 订阅Resize事件，在大小改变时也刷新滚动条
             dgvStocks.Resize += (s, e) =>
             {
-                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
-                {
-                    try
-                    {
-                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
-                        dgvStocks.Invalidate(true);
-                    }
-                    catch { }
-                }
+                // 窗口大小改变时，重新应用深色滚动条主题（不强制刷新，避免频繁重绘）
+                ApplyDarkScrollBarTheme(forceRefresh: false);
             };
             
+            // 延迟隐藏滚动条的定时器初始化
+            scrollBarHideTimer = new System.Windows.Forms.Timer();
+            scrollBarHideTimer.Interval = 2000;  // 延迟2秒隐藏，给用户足够时间操作滚动条
+            EventHandler scrollBarHideTimer_Tick = (s, e) =>
+            {
+                // 检查对象是否已释放（防止在Dispose后触发）
+                // 注意：System.Windows.Forms.Timer没有IsDisposed属性，只能检查是否为null
+                if (scrollBarHideTimer == null ||
+                    dgvStocks == null || dgvStocks.IsDisposed || 
+                    this == null || this.IsDisposed)
+                {
+                    if (scrollBarHideTimer != null)
+                    {
+                        scrollBarHideTimer.Stop();
+                    }
+                    return;
+                }
+                
+                try
+                {
+                    // 检查鼠标是否仍在面板或DataGridView内
+                    Point mousePos = Control.MousePosition;
+                    Point panelMousePos = this.PointToClient(mousePos);
+                    
+                    // 如果鼠标不在面板内，才隐藏滚动条
+                    if (!this.ClientRectangle.Contains(panelMousePos))
+                    {
+                        if (dgvStocks != null && !dgvStocks.IsDisposed)
+                        {
+                            dgvStocks.ScrollBars = ScrollBars.None;
+                        }
+                        if (scrollBarHideTimer != null)
+                        {
+                            scrollBarHideTimer.Stop();
+                        }
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 对象已释放，停止定时器
+                    if (scrollBarHideTimer != null)
+                    {
+                        scrollBarHideTimer.Stop();
+                    }
+                }
+                catch
+                {
+                    // 其他异常，停止定时器
+                    if (scrollBarHideTimer != null)
+                    {
+                        scrollBarHideTimer.Stop();
+                    }
+                }
+            };
+            scrollBarHideTimer.Tick += scrollBarHideTimer_Tick;
+            
             // 统一的辅助方法：显示滚动条（如果数据超过10条）
-            // 使用统一的逻辑，避免代码重复，提高响应速度
+            // 当用户需要查看或编辑数据时显示，确保能看到所有数据以便删除
             Action showScrollBarIfNeeded = () =>
             {
                 if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.Rows.Count > 10)
                 {
                     dgvStocks.ScrollBars = ScrollBars.Vertical;
+                    // 显示滚动条时，应用深色主题以降低亮度（不强制刷新，避免性能问题）
+                    ApplyDarkScrollBarTheme(forceRefresh: false);
+                    // 停止延迟隐藏定时器（如果正在运行）
+                    if (scrollBarHideTimer != null)
+                    {
+                        scrollBarHideTimer.Stop();
+                    }
                 }
             };
             
-            // 实现滚动条自动显示/隐藏：多种触发条件显示，离开时隐藏
-            // 1. 鼠标进入时显示（最常用）
+            // 统一的辅助方法：延迟隐藏滚动条（给用户足够时间操作）
+            Action hideScrollBarDelayed = () =>
+            {
+                if (dgvStocks != null && !dgvStocks.IsDisposed && scrollBarHideTimer != null)
+                {
+                    // 启动延迟隐藏定时器
+                    scrollBarHideTimer.Stop();  // 先停止，避免重复启动
+                    scrollBarHideTimer.Start();
+                }
+            };
+            
+            // 实现滚动条显示/隐藏：只在用户主动交互时显示，离开时隐藏
+            // 注意：数据刷新时不显示滚动条（通过isRefreshingData标志控制）
+            // 1. 鼠标进入时显示（用户需要查看数据时，确保能看到超过10条的数据以便删除）
             dgvStocks.MouseEnter += (s, e) => showScrollBarIfNeeded();
             
-            // 2. 鼠标移动时显示（更灵敏，鼠标一移动就显示）
-            dgvStocks.MouseMove += (s, e) => showScrollBarIfNeeded();
-            
-            // 3. 点击时显示
+            // 2. 点击时显示（用户主动交互，需要编辑时）
             dgvStocks.MouseClick += (s, e) => showScrollBarIfNeeded();
             
-            // 4. 选择数据行时显示（重要：用户选择行时显示）
-            dgvStocks.SelectionChanged += (s, e) => showScrollBarIfNeeded();
-            
-            // 5. 鼠标离开时隐藏滚动条（避免刺眼）
-            dgvStocks.MouseLeave += (s, e) =>
+            // 3. 选择数据行时显示（用户选择行时，可能需要编辑或删除）
+            // 注意：通过isRefreshingData标志判断，避免数据刷新时触发
+            dgvStocks.SelectionChanged += (s, e) =>
             {
-                if (dgvStocks != null && !dgvStocks.IsDisposed)
+                // 只有在非数据刷新状态下，用户主动选择时才显示滚动条
+                if (!isRefreshingData)
                 {
-                    dgvStocks.ScrollBars = ScrollBars.None;
+                    showScrollBarIfNeeded();
                 }
             };
             
-            // 面板本身也监听鼠标事件，确保点击面板时显示滚动条
+            // 4. 鼠标离开时延迟隐藏滚动条（给用户足够时间操作滚动条）
+            dgvStocks.MouseLeave += (s, e) =>
+            {
+                // 延迟隐藏，而不是立即隐藏，方便用户操作滚动条
+                hideScrollBarDelayed();
+            };
+            
+            // 面板鼠标进入时也显示滚动条（用户需要查看数据时）
             this.MouseEnter += (s, e) => showScrollBarIfNeeded();
-            this.MouseMove += (s, e) => showScrollBarIfNeeded();
+            
+            // 面板点击时也显示滚动条（用户主动交互）
             this.MouseClick += (s, e) => showScrollBarIfNeeded();
+            
+            // 面板鼠标离开时也延迟隐藏滚动条，降低存在感，让用户专注于数据
+            this.MouseLeave += (s, e) =>
+            {
+                // 延迟隐藏，而不是立即隐藏，方便用户操作滚动条
+                hideScrollBarDelayed();
+            };
+            
+            // 鼠标移动时也显示滚动条（用户可能在操作滚动条）
+            // 注意：MouseMove事件会频繁触发，但showScrollBarIfNeeded内部有检查，性能影响较小
+            MouseEventHandler dgvStocks_MouseMove = (s, e) =>
+            {
+                try
+                {
+                    // 如果数据超过10条，显示滚动条（用户可能在操作）
+                    if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.Rows.Count > 10)
+                    {
+                        showScrollBarIfNeeded();
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 对象已释放，忽略
+                }
+                catch
+                {
+                    // 其他异常，忽略（避免影响UI操作）
+                }
+            };
+            dgvStocks.MouseMove += dgvStocks_MouseMove;
+            
+            // 面板鼠标移动时也显示滚动条（用户可能在操作滚动条）
+            MouseEventHandler panel_MouseMove = (s, e) =>
+            {
+                try
+                {
+                    // 如果数据超过10条，显示滚动条（用户可能在操作）
+                    if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.Rows.Count > 10)
+                    {
+                        showScrollBarIfNeeded();
+                    }
+                }
+                catch (ObjectDisposedException)
+                {
+                    // 对象已释放，忽略
+                }
+                catch
+                {
+                    // 其他异常，忽略（避免影响UI操作）
+                }
+            };
+            this.MouseMove += panel_MouseMove;
+            
+            // 注意：
+            // 1. 数据刷新时不显示滚动条（已在UpdateDataGridView中处理）
+            // 2. 移除了SelectionChanged事件，避免数据刷新时自动触发
+            // 3. 只在用户鼠标进入或点击时才显示滚动条，确保不喧宾夺主
             
             // 初始化时显示空表格（只有列标题，没有数据行）
             // 这样即使没有数据，用户也能看到列名称
@@ -1126,46 +1233,113 @@ namespace HaiLiDrvDemo
         [DllImport("user32.dll")]
         private static extern IntPtr SendMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
         
+        [DllImport("user32.dll")]
+        private static extern int SetClassLong(IntPtr hWnd, int nIndex, int dwNewLong);
+        
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int GetClassLong(IntPtr hWnd, int nIndex);
+        
         private const int SB_HORZ = 0;
         private const int SB_VERT = 1;
         private const int SB_BOTH = 3;
         private const uint WM_THEMECHANGED = 0x031A;
+        private const int GCL_STYLE = -26;
+        private const int CS_HREDRAW = 0x0002;
+        private const int CS_VREDRAW = 0x0001;
+        
+        // 标记是否已应用滚动条主题，避免重复设置
+        private bool scrollBarThemeApplied = false;
+        
+        // 标记是否正在刷新数据，避免数据刷新时SelectionChanged事件触发显示滚动条
+        private bool isRefreshingData = false;
         
         /// <summary>
-        /// 自定义滚动条绘制（深色主题，不刺眼）
-        /// 使用多种方法尝试设置滚动条为深色
+        /// 应用深色滚动条主题（极低可见度，不喧宾夺主）
+        /// 使用多种方法尝试设置滚动条为极暗的颜色，最大程度降低亮度
         /// </summary>
-        private void DgvStocks_CustomScrollBarPaint(object sender, PaintEventArgs e)
+        private void ApplyDarkScrollBarTheme(bool forceRefresh = false)
         {
-            // 使用Windows API设置滚动条为深色主题
+            if (dgvStocks == null || dgvStocks.IsDisposed || !dgvStocks.IsHandleCreated)
+                return;
+            
+            // 如果已经应用过主题且不是强制刷新，则跳过（避免重复调用导致性能问题）
+            if (scrollBarThemeApplied && !forceRefresh)
+                return;
+            
             try
             {
-                if (dgvStocks != null && !dgvStocks.IsDisposed && dgvStocks.IsHandleCreated)
+                // 方法1：强制禁用Windows主题，使用最暗的经典样式（多次调用确保生效）
+                // 经典样式的滚动条通常比现代主题更暗，几乎不可见
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                
+                // 方法2：尝试使用FlatScrollBar样式（更细、更不显眼）
+                // 注意：这可能需要系统支持
+                try
                 {
-                    // 方法1：禁用Windows主题，让滚动条使用系统默认样式
-                    SetWindowTheme(dgvStocks.Handle, "", "");
-                    
-                    // 方法2：发送主题变更消息，强制刷新滚动条
-                    SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
-                    
-                    // 方法3：尝试使用深色滚动条主题（Windows 10/11）
-                    // 注意：这需要系统支持深色滚动条
-                    try
-                    {
-                        // 尝试设置滚动条为深色主题
-                        SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
-                    }
-                    catch
-                    {
-                        // 如果失败，回退到默认方法
-                        SetWindowTheme(dgvStocks.Handle, "", "");
-                    }
+                    SetWindowTheme(dgvStocks.Handle, "FlatScrollBar", null);
+                }
+                catch { }
+                
+                // 方法3：再次强制禁用主题，确保使用最暗样式
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                
+                // 方法4：尝试使用深色滚动条主题（Windows 10/11）
+                // 这会使用系统深色主题的滚动条样式，通常更暗
+                try
+                {
+                    SetWindowTheme(dgvStocks.Handle, "DarkMode_Explorer", null);
+                }
+                catch { }
+                
+                // 方法5：尝试使用其他深色主题变体
+                try
+                {
+                    SetWindowTheme(dgvStocks.Handle, "DarkMode_CFD", null);
+                }
+                catch { }
+                
+                // 方法6：最后一次强制禁用主题，确保使用最暗的经典样式
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                SetWindowTheme(dgvStocks.Handle, "", "");
+                
+                // 方法7：发送主题变更消息，强制刷新滚动条（多次发送确保生效）
+                SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
+                SendMessage(dgvStocks.Handle, WM_THEMECHANGED, IntPtr.Zero, IntPtr.Zero);
+                
+                // 方法8：尝试通过窗口类样式来影响滚动条外观
+                try
+                {
+                    int currentStyle = GetClassLong(dgvStocks.Handle, GCL_STYLE);
+                    // 不修改样式，只是确保刷新
+                }
+                catch { }
+                
+                // 标记已应用主题
+                scrollBarThemeApplied = true;
+                
+                // 只有在强制刷新时才调用 Invalidate 和 Update（避免在 Paint 事件中造成循环）
+                if (forceRefresh)
+                {
+                    dgvStocks.Invalidate(true);
+                    dgvStocks.Update();
                 }
             }
             catch
             {
                 // 如果设置失败，忽略错误（不影响功能）
             }
+        }
+        
+        /// <summary>
+        /// 自定义滚动条绘制（深色主题，不刺眼）
+        /// 注意：这里只设置主题，不调用 Invalidate，避免无限循环
+        /// </summary>
+        private void DgvStocks_CustomScrollBarPaint(object sender, PaintEventArgs e)
+        {
+            // 在 Paint 事件中只设置主题，不刷新，避免无限循环
+            ApplyDarkScrollBarTheme(forceRefresh: false);
         }
         
         /// <summary>
@@ -1248,6 +1422,14 @@ namespace HaiLiDrvDemo
                         Logger.Instance.Error(string.Format("触发保存事件失败: {0}", ex.Message));
                         Logger.Instance.Error(string.Format("异常堆栈: {0}", ex.StackTrace));
                     }
+                    
+                    // 编辑操作（添加股票）后，不自动显示滚动条
+                    // 滚动条只在用户鼠标进入面板时显示，避免刺眼
+                    // 如果数据不超过10条，确保隐藏滚动条
+                    if (dgvStocks != null && !dgvStocks.IsDisposed && stockCodes.Count <= 10)
+                    {
+                        dgvStocks.ScrollBars = ScrollBars.None;
+                    }
                 }
                 else
                 {
@@ -1302,6 +1484,14 @@ namespace HaiLiDrvDemo
                     catch (Exception ex)
                     {
                         Logger.Instance.Error(string.Format("触发保存事件失败: {0}", ex.Message));
+                    }
+                    
+                    // 编辑操作（删除股票）后，不自动显示滚动条
+                    // 滚动条只在用户鼠标进入面板时显示，避免刺眼
+                    // 如果数据不超过10条，确保隐藏滚动条
+                    if (dgvStocks != null && !dgvStocks.IsDisposed && stockCodes.Count <= 10)
+                    {
+                        dgvStocks.ScrollBars = ScrollBars.None;
                     }
                 }
                 else
@@ -1619,6 +1809,9 @@ namespace HaiLiDrvDemo
             };
             colName.DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleLeft;
             colName.DefaultCellStyle.Padding = new Padding(3, 0, 0, 0);  // 减小左边距，从5改为3，节省空间
+            // 设置股票名称文字颜色为浅灰色，降低亮度，避免长时间观看刺眼
+            colName.DefaultCellStyle.ForeColor = Color.FromArgb(180, 180, 180);  // 浅灰色，不刺眼
+            colName.DefaultCellStyle.SelectionForeColor = Color.FromArgb(200, 200, 200); // 选中时稍亮的灰色
             // 设置列标题样式（创建新样式对象）
             DataGridViewCellStyle nameHeaderStyle = new DataGridViewCellStyle();
             nameHeaderStyle.BackColor = Color.FromArgb(20, 20, 20);  // 深灰色表头
@@ -1669,6 +1862,9 @@ namespace HaiLiDrvDemo
         /// </summary>
         private void UpdateDataGridView(List<StockDisplayItem> displayItems)
         {
+            // 标记正在刷新数据，避免SelectionChanged事件触发显示滚动条
+            isRefreshingData = true;
+            
             try
             {
                 if (dgvStocks == null)
@@ -1804,17 +2000,10 @@ namespace HaiLiDrvDemo
                 dgvStocks.EnableHeadersVisualStyles = false;  // 禁用系统样式，使用自定义样式
                 dgvStocks.ColumnHeadersHeightSizeMode = DataGridViewColumnHeadersHeightSizeMode.DisableResizing;  // 禁止调整大小
                 
-                // 数据更新后，根据数据条数决定滚动条状态
-                // 如果数据超过10条，自动显示滚动条（方便用户操作，更灵敏）
-                // 如果数据不超过10条，隐藏滚动条（避免刺眼）
-                if (dgvStocks.Rows.Count > 10)
+                // 数据刷新后，强制隐藏滚动条，避免刺眼和喧宾夺主
+                // 滚动条只在用户鼠标进入或点击面板时才显示
+                if (dgvStocks != null && !dgvStocks.IsDisposed)
                 {
-                    // 数据超过10条，自动显示滚动条（方便用户查看和操作）
-                    dgvStocks.ScrollBars = ScrollBars.Vertical;
-                }
-                else
-                {
-                    // 数据不超过10条，隐藏滚动条（避免刺眼）
                     dgvStocks.ScrollBars = ScrollBars.None;
                 }
 
@@ -2053,6 +2242,11 @@ namespace HaiLiDrvDemo
             {
                 Logger.Instance.Error(string.Format("更新DataGridView失败: {0}", ex.Message));
                 Logger.Instance.Error(string.Format("异常堆栈: {0}", ex.StackTrace));
+            }
+            finally
+            {
+                // 数据刷新完成，重置标志
+                isRefreshingData = false;
             }
         }
         
@@ -2397,6 +2591,18 @@ namespace HaiLiDrvDemo
                     }
                     catch { }
                     refreshTimer = null;
+                }
+                
+                // 释放延迟隐藏滚动条的定时器
+                if (scrollBarHideTimer != null)
+                {
+                    try
+                    {
+                        scrollBarHideTimer.Stop();
+                        scrollBarHideTimer.Dispose();
+                    }
+                    catch { }
+                    scrollBarHideTimer = null;
                 }
                 
                 // 取消ControlAdded事件订阅（防止内存泄漏）
